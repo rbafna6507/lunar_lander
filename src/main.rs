@@ -6,10 +6,10 @@ use macroquad::input::get_keys_down;
 
 const MOVEMENT_SPEED: f32 = 2000.0;
 const PLAYER_SPEED: f32 = 220.0;
-const THRUST: f32 = 220.0;
-const TURN_SPEED: f32 = 200.0;
+const THRUST: f32 = 2.0;
+const TURN_SPEED: f32 = 2.0;
 const MASS: f32 = 100.0;
-const GRAVITY: f32 = 2.0;
+const GRAVITY: f32 = 0.008;
 
 
 struct Rocket {
@@ -64,27 +64,8 @@ async fn main() {
 
 
 
-fn process_input(rocket: &mut Rocket) {
-
-    if is_key_down(KeyCode::W) {
-        rocket.y -= PLAYER_SPEED * rocket.theta.cos();
-        rocket.x += PLAYER_SPEED * rocket.theta.sin();
-    }
-    if is_key_down(KeyCode::A) {
-        rocket.theta -= PLAYER_SPEED * 0.01;
-    }
-    if is_key_down(KeyCode::S) {
-        rocket.y += PLAYER_SPEED * rocket.theta.cos();
-        rocket.x -= PLAYER_SPEED * rocket.theta.sin();
-    }
-    if is_key_down(KeyCode::D) {
-        rocket.theta += PLAYER_SPEED * 0.01;
-    }
-}
-
-
 fn new_process_input(rocket: &mut Rocket) {
-    let delta_time = get_frame_time();
+    let delta_time = 1.0;
 
     if is_key_down(KeyCode::W) {
         rocket.ay -= delta_time * (THRUST * rocket.theta.cos()) / MASS;
@@ -103,19 +84,24 @@ fn new_process_input(rocket: &mut Rocket) {
 }
 
 fn add_gravity(rocket: &mut Rocket) {
-    rocket.ay += GRAVITY / MASS;
+    let dt: f32 = 1.0;
+    rocket.ay += dt * GRAVITY;
 }
 
 fn update_state(rocket: &mut Rocket) {
     let dt = 1.0;
 
-    rocket.vx = rocket.vx + rocket.ax * dt;
-    rocket.vy = rocket.vy + rocket.ay * dt;
-    rocket.vtheta = rocket.vtheta + rocket.atheta * dt;
+    rocket.vx += rocket.ax * dt;
+    rocket.vy += rocket.ay * dt;
+    rocket.vtheta += rocket.atheta * dt;
 
-    rocket.x = rocket.vx * dt;
-    rocket.y = rocket.vy * dt;
-    rocket.theta = rocket.vtheta * dt;
+    rocket.x += rocket.vx * dt;
+    rocket.y += rocket.vy * dt;
+    rocket.theta += rocket.vtheta * dt;
+
+    rocket.ax = 0.0;
+    rocket.ay = 0.0;
+    rocket.atheta = 0.0;
 
 }
 
