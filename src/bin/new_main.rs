@@ -36,13 +36,11 @@ fn window_conf() -> Conf {
     // TODO: if speed < 3 and collides with ground, land successful
     // TODO: else: failure
 // TODO: particles
-    // TODO: thrust particles
     // TODO: angular thrust particles
 // TODO: scoring a landing
     // TODO: 0-1 speed is quite good, as close to 0 degrees as possible is good
     // TODO: score is a function of speed and theta
 
-// TODO: draw trajectory line
 
 // TODO: PID system that balances speed + orientation to land rocket automatically
 
