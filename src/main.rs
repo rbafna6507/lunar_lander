@@ -328,6 +328,7 @@ fn display_state(rocket: &Rocket) {
     // should display rocket state next to the rocket
     // green if under velocity criteria
     // red if over velocity/orientation criteria
+    
 }
 
 
