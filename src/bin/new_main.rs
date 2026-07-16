@@ -1,7 +1,7 @@
 mod utils;
 mod game;
 
-use std::vec;
+use std::{f32::consts::PI, vec};
 use macroquad::{prelude::*};
 use macroquad_particles::{BlendMode::{self, Additive}, ColorCurve, Emitter, EmitterConfig};
 
@@ -13,7 +13,7 @@ const MOVEMENT_SPEED: f32 = 75.0;
 const THRUST: f32 = 2.3;
 const TURN_SPEED: f32 = 0.0003;
 const MASS: f32 = 100.0;
-const GRAVITY: f32 = 0.008;
+const GRAVITY: f32 = 0.009;
 const GROUND_HEIGHT: f32 = 100.0;
 const ROCKET_WIDTH: f32 = 30.0;
 const ROCKET_HEIGHT: f32 = 60.0;
@@ -77,6 +77,7 @@ async fn main() {
                 draw_start_screen();
                 if is_key_pressed(KeyCode::Space) {
                     rocket = spawn_rocket();
+                    rocket = randomize_rocket_state(rocket);
                     next_state = Some(GameState::Playing);
                 }
             }
@@ -171,6 +172,7 @@ fn update_rocket_state(rocket: &mut Rocket) {
 
     // Allow rocket x axis wrap-around
     rocket.position.x = rocket.position.x % screen_width();
+    rocket.rotation.theta = rocket.rotation.theta % (2.0*PI);
 
     // reset acceleration values
     rocket.acceleration.x = 0.0;
@@ -182,39 +184,53 @@ fn get_magnitude(x: f32, y:f32) -> f32 {
     (x.powf(2.0) + y.powf(2.0)).sqrt()
 }
 
-
+fn randomize_rocket_state(rocket: &mut Rocket) {
+    unimplemented!()
+}
 
 fn handle_collisions(rocket: &Rocket) -> Option<String> {
-    // TODO:
-        // need to keep track of left foot
-        // need to keep track of right foot
-        // need to keep track of tip of rocket
 
-    let x = rocket.rotation.theta.cos() * ROCKET_WIDTH/2.0;
-    let y = rocket.rotation.theta.sin() * ROCKET_HEIGHT / 2.0;
+    let left_foot = Vec2 {
+        x: rocket.position.x + (-ROCKET_WIDTH/2.0 * rocket.rotation.theta.cos() - ROCKET_HEIGHT/2.0 * rocket.rotation.theta.sin()), 
+        y: rocket.position.y - (ROCKET_WIDTH/2.0 * rocket.rotation.theta.sin() -ROCKET_HEIGHT/2.0 * rocket.rotation.theta.cos())
+    };
+
+    let right_foot = Vec2 {
+        x: rocket.position.x - (-ROCKET_WIDTH/2.0 * rocket.rotation.theta.cos() + ROCKET_HEIGHT/2.0 * rocket.rotation.theta.sin()), 
+        y: rocket.position.y - (-ROCKET_WIDTH/2.0 * rocket.rotation.theta.sin() -ROCKET_HEIGHT/2.0 * rocket.rotation.theta.cos())
+    };
+
+    let tip = Vec2 {
+        x: rocket.position.x + (0.0 * rocket.rotation.theta.cos() + ROCKET_HEIGHT/2.0 * rocket.rotation.theta.sin()), 
+        y: rocket.position.y + (0.0 * rocket.rotation.theta.sin() -ROCKET_HEIGHT/2.0 * rocket.rotation.theta.cos())
+    };
 
 
+    // debugging
+    // draw_rectangle(left_foot.x, left_foot.y, 2.0, 2.0, YELLOW);
+    // draw_rectangle(right_foot.x, right_foot.y, 2.0, 2.0, YELLOW);
+    // draw_rectangle(tip.x, tip.y, 2.0, 2.0, BLUE);
 
-    
-
-    // if any of those points are at or below the ground, collision
-        // if speed is > 8 - failed landing
-            // calculate score
-            // display loss screen
-
-        // if speed is <= 8 - successful landing
-        // and abs(theta) <= 20
-            // calculate score
-            // display you landed but got a ___ score
-
-    // TEMP: delete this once your 3-point detection above is wired in.
-    // It only exists so the Start/GameOver screens are testable end-to-end;
-    // your real detection should return Some(message) on a landing/crash.
     let ground_y = screen_height() - GROUND_HEIGHT;
-    if rocket.position.y + ROCKET_HEIGHT / 2.0 >= ground_y {
-        return Some("not quite a pretty landing".to_string());
-    }
 
+    if tip.y >= ground_y + 2.5 {
+        return Some("crash landing! try again :)".to_string());
+    }
+    else if (left_foot.y >= ground_y + 5.0 || right_foot.y >= ground_y + 5.0) {
+        
+        let speed = get_speed(rocket.velocity.x, rocket.velocity.y);
+        let angle = get_theta_degrees(rocket.rotation.theta);
+        let score = calculate_land_score(speed, angle.abs());
+
+        // if score < 70 - CRASH
+        if score < 70.0 {
+            return Some("not quite a smooth landing, score: ".to_string() + &score.to_string())
+        }
+        else {
+            return Some("relatively good landing, i think - score: ".to_string() + &score.to_string())
+        }
+
+    }
     None
 
 }
@@ -229,12 +245,31 @@ fn draw_rocket(rocket: &mut Rocket, rocket_texture: &mut Texture2D) {
     let ground_y: f32 = screen_height() - GROUND_HEIGHT;
     draw_rectangle(0.0, ground_y, screen_width(), GROUND_HEIGHT, GRAY);
 
-    draw_text(&format!("Speed: {}", get_magnitude(rocket.velocity.x, rocket.velocity.y) * 9.5), 20.0, 50.0, 30.0, WHITE);
+    draw_text(&format!("Speed: {}", get_speed(rocket.velocity.x, rocket.velocity.y)), 20.0, 50.0, 30.0, WHITE);
+    draw_text(&format!("Angle: {}", get_theta_degrees(rocket.rotation.theta)), 20.0, 80.0, 30.0, WHITE);
 
     let params = DrawTextureParams { dest_size: Some(vec2(ROCKET_WIDTH, ROCKET_HEIGHT)), rotation: rocket.rotation.theta, ..Default::default() };
     draw_texture_ex(&rocket_texture, rocket.position.x - ROCKET_WIDTH / 2.0, rocket.position.y - ROCKET_HEIGHT / 2.0, WHITE, params);
 
     draw_trajectory(rocket);
+}
+
+fn get_theta_degrees(rad: f32) -> f32 {
+    rad * 57.2958
+}
+
+fn get_speed(x_vel: f32, y_vel: f32) -> f32 {
+    get_magnitude(x_vel, y_vel) * 9.5
+}
+
+fn calculate_land_score(speed: f32, angle: f32) -> f32 {
+
+    let score = 100.0 - (speed* 2.5) - (angle * 5.0);
+
+    // print!((speed*1.5).to_string());
+    // print!((angle * 3.0));
+
+    return score;
 }
 
 fn draw_trajectory(rocket: &Rocket) {

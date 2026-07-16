@@ -66,7 +66,7 @@ pub async fn create_booster_emitters() -> (Emitter, Emitter, Texture2D) {
         lifetime_randomness: 0.4,
         amount: 10,
         size: 2.0,
-        initial_direction_spread: 1.5,
+        initial_direction_spread: 1.2,
         initial_velocity: 200.0,
         initial_velocity_randomness: 0.9,
         emitting: false,
@@ -94,8 +94,8 @@ pub async fn create_booster_emitters() -> (Emitter, Emitter, Texture2D) {
         ..Default::default()
     };
 
-    let mut engine_emitter = Emitter::new(engine_config);
-    let mut attitude_emitter = Emitter::new(side_attitude_config);
+    let engine_emitter = Emitter::new(engine_config);
+    let attitude_emitter = Emitter::new(side_attitude_config);
 
     (engine_emitter, attitude_emitter, rocket_texture)
 }
