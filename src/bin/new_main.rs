@@ -9,8 +9,7 @@ use macroquad_particles::{BlendMode::{self, Additive}, ColorCurve, Emitter, Emit
 use crate::utils::{Rocket, Vector2D};
 
 
-const MOVEMENT_SPEED: f32 = 100.0;
-const PLAYER_SPEED: f32 = 220.0;
+const MOVEMENT_SPEED: f32 = 75.0;
 const THRUST: f32 = 2.3;
 const TURN_SPEED: f32 = 0.0003;
 const MASS: f32 = 100.0;
@@ -30,32 +29,53 @@ fn window_conf() -> Conf {
 }
 
 
-// TODO: could do force (thrust) as a variable of rocket state (eg. mass)
-    // TODO: extra credit lol
-// TODO: collisions (for landing)
-    // TODO: if speed < 3 and collides with ground, land successful
-    // TODO: else: failure
-// TODO: particles
-    // TODO: angular thrust particles
 // TODO: scoring a landing
     // TODO: 0-1 speed is quite good, as close to 0 degrees as possible is good
     // TODO: score is a function of speed and theta
 
-
 // TODO: PID system that balances speed + orientation to land rocket automatically
+
+enum GameState {
+    Start,
+    Playing,
+    GameOver(String),
+}
+
+
+enum Landing {
+    Success {score: u32},
+    Crash {score: u32}
+}
+
+
+fn spawn_rocket() -> utils::Rocket {
+    utils::Rocket::new(
+        utils::Vector2D::new(screen_width() / 2.0, screen_height() / 2.0),
+        utils::Vector2D::new(0.0, 0.0),
+        utils::Vector2D::new(0.0, 0.0),
+        utils::RotationalState::new(0.0, 0.0, 0.0),
+    )
+}
+
+fn draw_centered_text(text: &str, y: f32, font_size: f32, color: Color) {
+    let dims = measure_text(text, None, font_size as u16, 1.0);
+    draw_text(text, (screen_width() - dims.width) / 2.0, y, font_size, color);
+}
+
+fn draw_start_screen() {
+    draw_centered_text("ROCKET LANDER", screen_height() / 2.0 - 40.0, 70.0, WHITE);
+    draw_centered_text("press SPACE to start", screen_height() / 2.0 + 30.0, 34.0, GRAY);
+}
+
+fn draw_game_over_screen(message: &str) {
+    draw_centered_text(message, screen_height() / 2.0 - 30.0, 56.0, WHITE);
+    draw_centered_text("SPACE to restart        Q to quit", screen_height() / 2.0 + 40.0, 32.0, GRAY);
+}
 
 #[macroquad::main(window_conf)]
 async fn main() {
 
-    let x = screen_width() / 2.0;
-    let y = screen_height() / 2.0;
-
-    let mut rocket: utils::Rocket = utils::Rocket::new(
-        utils::Vector2D::new(x, y),
-        utils::Vector2D::new(0.0, 0.0),
-        utils::Vector2D::new(0.0, 0.0),
-        utils::RotationalState::new(0.0, 0.0, 0.0)
-    );
+    let mut rocket = spawn_rocket();
 
     let exhaust_texture = load_texture("assets/exhaust.png").await.unwrap();
     let mut rocket_texture = load_texture("assets/rocket.png").await.unwrap();
@@ -65,7 +85,7 @@ async fn main() {
 
     // 2. build the emitter config
     let engine_config = EmitterConfig {
-        texture: Some(exhaust_texture),
+        texture: Some(exhaust_texture.clone()),
         blend_mode: BlendMode::Additive,
         colors_curve: ColorCurve {
             start: YELLOW,
@@ -84,30 +104,79 @@ async fn main() {
         ..Default::default()
     };
 
+    let side_attitude_config = EmitterConfig {
+        texture: Some(exhaust_texture),
+        blend_mode: BlendMode::Additive,
+        colors_curve: ColorCurve {
+            start: WHITE,
+            mid:   WHITE,
+            end:   GRAY,
+        },
+        lifetime: 0.1,
+        lifetime_randomness: 0.2,
+        amount: 5,
+        size: 2.0,
+        initial_direction_spread: 0.5,
+        initial_velocity: 200.0,
+        initial_velocity_randomness: 0.3,
+        emitting: false,
+        local_coords: false,
+        ..Default::default()
+    };
+
     let mut engine_emitter = Emitter::new(engine_config);
+    let mut attitude_emitter = Emitter::new(side_attitude_config);
 
-    // spawn items and item state
-        // background (stars)
-        // rocket (square, with two trapezoids 3 units from middle, two lines diagonal from bottom as landing gear)
-        // floor
-    clear_background(WHITE);
+    let mut state = GameState::Start;
 
-    // main simulation loop
+    // main game loop
     loop {
-        process_input(&mut rocket, &mut engine_emitter);
-        engine_emitter.draw(Vec2::ZERO);
+        clear_background(BLACK);
 
-        update_rocket_state(&mut rocket);
+        let mut next_state: Option<GameState> = None;
 
-        draw_rocket(&mut rocket, &mut rocket_texture);
+        match &state {
+            GameState::Start => {
+                draw_start_screen();
+                if is_key_pressed(KeyCode::Space) {
+                    rocket = spawn_rocket();
+                    next_state = Some(GameState::Playing);
+                }
+            }
+            GameState::Playing => {
+                process_input(&mut rocket, &mut engine_emitter, &mut attitude_emitter);
+                engine_emitter.draw(Vec2::ZERO);
+                attitude_emitter.draw(Vec2::ZERO);
+
+                update_rocket_state(&mut rocket);
+
+                draw_rocket(&mut rocket, &mut rocket_texture);
+
+                if let Some(message) = handle_collisions(&rocket) {
+                    next_state = Some(GameState::GameOver(message));
+                }
+            }
+            GameState::GameOver(message) => {
+                draw_game_over_screen(message);
+                if is_key_pressed(KeyCode::Space) {
+                    rocket = spawn_rocket();
+                    next_state = Some(GameState::Playing);
+                }
+                if is_key_pressed(KeyCode::Q) {
+                    break;
+                }
+            }
+        }
+
+        if let Some(s) = next_state {
+            state = s;
+        }
 
         next_frame().await;
-
     }
-
 }
 
-fn process_input(rocket: &mut Rocket, engine_emitter: &mut Emitter) {
+fn process_input(rocket: &mut Rocket, engine_emitter: &mut Emitter, side_emitter: &mut Emitter) {
     let delta_time = 1.0;
 
     if is_key_down(KeyCode::W) {
@@ -120,10 +189,24 @@ fn process_input(rocket: &mut Rocket, engine_emitter: &mut Emitter) {
 
     if is_key_down(KeyCode::A) {
         rocket.rotation.atheta -= delta_time * TURN_SPEED;
+
+        let side_thrust_position = Vec2 { 
+            x: rocket.position.x + (ROCKET_WIDTH/3.0 * rocket.rotation.theta.cos() + ROCKET_HEIGHT/4.0 * rocket.rotation.theta.sin()), 
+            y: rocket.position.y + (ROCKET_WIDTH/3.0 * rocket.rotation.theta.sin() - ROCKET_HEIGHT/4.0 * rocket.rotation.theta.cos())
+        };
+        side_emitter.config.initial_direction = Vec2 { x: rocket.rotation.theta.cos(), y: rocket.rotation.theta.sin() };
+        side_emitter.emit(side_thrust_position, 10);
     }
 
     if is_key_down(KeyCode::D) {
         rocket.rotation.atheta += delta_time * TURN_SPEED;
+
+        let side_thrust_position = Vec2 { 
+            x: rocket.position.x - (ROCKET_WIDTH/3.0 * rocket.rotation.theta.cos() - ROCKET_HEIGHT/4.0 * rocket.rotation.theta.sin()), 
+            y: rocket.position.y - (ROCKET_WIDTH/3.0 * rocket.rotation.theta.sin() + ROCKET_HEIGHT/4.0 * rocket.rotation.theta.cos())
+        };
+        side_emitter.config.initial_direction = Vec2 { x: -rocket.rotation.theta.cos(), y: -rocket.rotation.theta.sin() };
+        side_emitter.emit(side_thrust_position, 10);
     }
 
     if is_key_down(KeyCode::S) {
@@ -162,8 +245,45 @@ fn get_magnitude(x: f32, y:f32) -> f32 {
     (x.powf(2.0) + y.powf(2.0)).sqrt()
 }
 
-fn draw_particles(rocket: &mut Rocket) {
-    unimplemented!()
+
+
+fn handle_collisions(rocket: &Rocket) -> Option<String> {
+    // TODO:
+        // need to keep track of left foot
+        // need to keep track of right foot
+        // need to keep track of tip of rocket
+
+    let x = rocket.rotation.theta.cos() * ROCKET_WIDTH/2.0;
+    let y = rocket.rotation.theta.sin() * ROCKET_HEIGHT / 2.0;
+
+
+
+    
+
+    // if any of those points are at or below the ground, collision
+        // if speed is > 8 - failed landing
+            // calculate score
+            // display loss screen
+
+        // if speed is <= 8 - successful landing
+        // and abs(theta) <= 20
+            // calculate score
+            // display you landed but got a ___ score
+
+    // TEMP: delete this once your 3-point detection above is wired in.
+    // It only exists so the Start/GameOver screens are testable end-to-end;
+    // your real detection should return Some(message) on a landing/crash.
+    let ground_y = screen_height() - GROUND_HEIGHT;
+    if rocket.position.y + ROCKET_HEIGHT / 2.0 >= ground_y {
+        return Some("not quite a pretty landing".to_string());
+    }
+
+    None
+
+}
+
+fn pid(rocket: &mut Rocket) {
+    
 }
 
 fn draw_rocket(rocket: &mut Rocket, rocket_texture: &mut Texture2D) {
@@ -217,7 +337,7 @@ fn draw_trajectory(rocket: &Rocket) {
 
     // plot the vector of vec2s
     for i in 0..points.len()-1 {
-        draw_line(points[i].x, points[i].y, points[i+1].x, points[i+1].y, 1.0, WHITE);
+        draw_line(points[i].x, points[i].y, points[i+1].x, points[i+1].y, 1.0, GRAY);
     }
 
 }
