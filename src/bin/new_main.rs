@@ -6,7 +6,7 @@ use macroquad::{prelude::*};
 use macroquad_particles::{BlendMode::{self, Additive}, ColorCurve, Emitter, EmitterConfig};
 
 
-use crate::utils::{Rocket, Vector2D};
+use crate::utils::{Rocket, create_booster_emitters};
 
 
 const MOVEMENT_SPEED: f32 = 75.0;
@@ -57,75 +57,12 @@ fn spawn_rocket() -> utils::Rocket {
     )
 }
 
-fn draw_centered_text(text: &str, y: f32, font_size: f32, color: Color) {
-    let dims = measure_text(text, None, font_size as u16, 1.0);
-    draw_text(text, (screen_width() - dims.width) / 2.0, y, font_size, color);
-}
-
-fn draw_start_screen() {
-    draw_centered_text("ROCKET LANDER", screen_height() / 2.0 - 40.0, 70.0, WHITE);
-    draw_centered_text("press SPACE to start", screen_height() / 2.0 + 30.0, 34.0, GRAY);
-}
-
-fn draw_game_over_screen(message: &str) {
-    draw_centered_text(message, screen_height() / 2.0 - 30.0, 56.0, WHITE);
-    draw_centered_text("SPACE to restart        Q to quit", screen_height() / 2.0 + 40.0, 32.0, GRAY);
-}
-
 #[macroquad::main(window_conf)]
 async fn main() {
 
     let mut rocket = spawn_rocket();
 
-    let exhaust_texture = load_texture("assets/exhaust.png").await.unwrap();
-    let mut rocket_texture = load_texture("assets/rocket.png").await.unwrap();
-
-    rocket_texture.set_filter(FilterMode::Nearest);
-    exhaust_texture.set_filter(FilterMode::Linear);
-
-    // 2. build the emitter config
-    let engine_config = EmitterConfig {
-        texture: Some(exhaust_texture.clone()),
-        blend_mode: BlendMode::Additive,
-        colors_curve: ColorCurve {
-            start: YELLOW,
-            mid:   Color::new(1.0, 0.5, 0.5, 0.5),
-            end:   Color::new(1.0, 1.0, 1.0, 0.0),
-        },
-        lifetime: 0.6,
-        lifetime_randomness: 0.4,
-        amount: 10,
-        size: 2.0,
-        initial_direction_spread: 1.5,
-        initial_velocity: 200.0,
-        initial_velocity_randomness: 0.9,
-        emitting: false,
-        local_coords: false,
-        ..Default::default()
-    };
-
-    let side_attitude_config = EmitterConfig {
-        texture: Some(exhaust_texture),
-        blend_mode: BlendMode::Additive,
-        colors_curve: ColorCurve {
-            start: WHITE,
-            mid:   WHITE,
-            end:   GRAY,
-        },
-        lifetime: 0.1,
-        lifetime_randomness: 0.2,
-        amount: 5,
-        size: 2.0,
-        initial_direction_spread: 0.5,
-        initial_velocity: 200.0,
-        initial_velocity_randomness: 0.3,
-        emitting: false,
-        local_coords: false,
-        ..Default::default()
-    };
-
-    let mut engine_emitter = Emitter::new(engine_config);
-    let mut attitude_emitter = Emitter::new(side_attitude_config);
+    let (mut engine_emitter, mut attitude_emitter, mut rocket_texture) = create_booster_emitters().await;
 
     let mut state = GameState::Start;
 
@@ -340,5 +277,20 @@ fn draw_trajectory(rocket: &Rocket) {
         draw_line(points[i].x, points[i].y, points[i+1].x, points[i+1].y, 1.0, GRAY);
     }
 
+}
+
+fn draw_centered_text(text: &str, y: f32, font_size: f32, color: Color) {
+    let dims = measure_text(text, None, font_size as u16, 1.0);
+    draw_text(text, (screen_width() - dims.width) / 2.0, y, font_size, color);
+}
+
+fn draw_start_screen() {
+    draw_centered_text("ROCKET LANDER", screen_height() / 2.0 - 40.0, 70.0, WHITE);
+    draw_centered_text("press SPACE to start", screen_height() / 2.0 + 30.0, 34.0, GRAY);
+}
+
+fn draw_game_over_screen(message: &str) {
+    draw_centered_text(message, screen_height() / 2.0 - 30.0, 56.0, WHITE);
+    draw_centered_text("SPACE to restart        Q to quit", screen_height() / 2.0 + 40.0, 32.0, GRAY);
 }
 
